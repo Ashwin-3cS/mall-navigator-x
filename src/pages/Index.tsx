@@ -127,6 +127,22 @@ const Index = () => {
     });
   };
 
+  const handleNextStep = () => {
+    if (route && currentStep < route.steps.length - 1) {
+      setCurrentStep(currentStep + 1);
+      toast({
+        title: "Step completed",
+        description: `Moving to step ${currentStep + 2}`,
+      });
+    }
+  };
+
+  const handlePreviousStep = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
   const handleRecalculateRoute = () => {
     toast({
       title: "Recalculating route",
@@ -277,6 +293,9 @@ const Index = () => {
             onStartNavigation={handleStartNavigation}
             onRecalculate={handleRecalculateRoute}
             onBack={handleBackToDirectory}
+            onNextStep={handleNextStep}
+            onPreviousStep={handlePreviousStep}
+            isNavigating={false}
           />
         )}
 
@@ -287,6 +306,9 @@ const Index = () => {
             onStartNavigation={() => {}}
             onRecalculate={handleRecalculateRoute}
             onBack={handleBackToDirectory}
+            onNextStep={handleNextStep}
+            onPreviousStep={handlePreviousStep}
+            isNavigating={true}
           />
         )}
       </main>

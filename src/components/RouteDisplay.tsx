@@ -13,6 +13,9 @@ interface RouteDisplayProps {
   onRecalculate: () => void;
   onShare?: () => void;
   onBack: () => void;
+  onNextStep?: () => void;
+  onPreviousStep?: () => void;
+  isNavigating?: boolean;
 }
 
 export const RouteDisplay: React.FC<RouteDisplayProps> = ({
@@ -21,9 +24,12 @@ export const RouteDisplay: React.FC<RouteDisplayProps> = ({
   onStartNavigation,
   onRecalculate,
   onShare,
-  onBack
+  onBack,
+  onNextStep,
+  onPreviousStep,
+  isNavigating = false
 }) => {
-  const [isNavigationStarted, setIsNavigationStarted] = useState(false);
+  const [isNavigationStarted, setIsNavigationStarted] = useState(isNavigating);
   const progress = ((currentStep + 1) / route.steps.length) * 100;
 
   const getDirectionIcon = (direction?: string) => {
@@ -113,26 +119,64 @@ export const RouteDisplay: React.FC<RouteDisplayProps> = ({
             Start Navigation
           </Button>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              onClick={onRecalculate}
-              variant="outline"
-              className="py-6"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Recalculate
-            </Button>
-            {onShare && (
+          <>
+            {/* Step Navigation Controls */}
+            <div className="bg-gradient-to-r from-primary/5 to-primary-glow/5 border border-primary/20 rounded-lg p-4 mb-4">
+              <div className="flex items-center justify-between">
+                <Button
+                  onClick={onPreviousStep}
+                  variant="outline"
+                  size="sm"
+                  disabled={currentStep === 0}
+                  className="flex items-center"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-1" />
+                  Previous
+                </Button>
+                
+                <div className="text-center">
+                  <p className="text-sm font-medium text-primary">
+                    Current Step {currentStep + 1} of {route.steps.length}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {route.steps[currentStep]?.instruction}
+                  </p>
+                </div>
+                
+                <Button
+                  onClick={onNextStep}
+                  variant="default"
+                  size="sm"
+                  disabled={currentStep >= route.steps.length - 1}
+                  className="flex items-center bg-primary hover:bg-primary/90"
+                >
+                  Next
+                  <ArrowRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
               <Button
-                onClick={onShare}
+                onClick={onRecalculate}
                 variant="outline"
                 className="py-6"
               >
-                <Share className="w-4 h-4 mr-2" />
-                Share Route
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Recalculate
               </Button>
-            )}
-          </div>
+              {onShare && (
+                <Button
+                  onClick={onShare}
+                  variant="outline"
+                  className="py-6"
+                >
+                  <Share className="w-4 h-4 mr-2" />
+                  Share Route
+                </Button>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>
