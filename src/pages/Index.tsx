@@ -16,6 +16,7 @@ import { QuickActions } from '@/components/QuickActions';
 import { FloorPlan } from '@/components/FloorPlan';
 import { EmergencyOverlay } from '@/components/EmergencyOverlay';
 import { ApiStatus } from '@/components/ApiStatus';
+import { CheckpointValidation } from '@/components/CheckpointValidation';
 
 // Data and utilities
 import { 
@@ -26,6 +27,9 @@ import {
 
 // API Hooks and Types
 import { useQRValidation, useRouteCalculation, Location, Store } from '@/hooks/use-api';
+
+// Navigation Session Hook
+import { useNavigationSession } from '@/hooks/use-navigation-session';
 
 type ViewMode = 'directory' | 'route' | 'navigation';
 
@@ -46,6 +50,17 @@ const Index = () => {
   
   // Route Calculation API hook
   const { calculateRoute, loading: routeLoading, error: routeError, data: calculatedRoute } = useRouteCalculation();
+  
+  // Navigation Session Management
+  const {
+    session: navigationSession,
+    createSession,
+    validateCheckpoint,
+    completeSession,
+    cancelSession,
+    isActive: isNavigating,
+    progress: navigationProgress,
+  } = useNavigationSession();
 
   // Demo QR locations for testing
   const demoLocations = [
@@ -105,11 +120,18 @@ const Index = () => {
 
   // Handle route calculation response
   useEffect(() => {
-    if (calculatedRoute) {
+    if (calculatedRoute && selectedDestination) {
+      // Create navigation session
+      const session = createSession(
+        calculatedRoute,
+        currentLocation?.qr_id || '',
+        selectedDestination.store_id
+      );
+      
       // Transform API route to match frontend Route interface
       const transformedRoute: Route = {
         startId: currentLocation?.qr_id || '',
-        endId: selectedDestination?.store_id || '',
+        endId: selectedDestination.store_id,
         steps: calculatedRoute.steps.map((step, index) => ({
           instruction: step.instruction,
           direction: step.direction as any,
@@ -128,10 +150,10 @@ const Index = () => {
       
       toast({
         title: "Route Calculated",
-        description: `Route to ${selectedDestination?.name} is ready`,
+        description: `Route to ${selectedDestination.name} is ready. Start navigation to begin step-by-step guidance.`,
       });
     }
-  }, [calculatedRoute, currentLocation, selectedDestination, toast]);
+  }, [calculatedRoute, selectedDestination, currentLocation, createSession, toast]);
 
   // Handle route calculation errors
   useEffect(() => {
@@ -175,11 +197,13 @@ const Index = () => {
   };
 
   const handleStartNavigation = () => {
-    setViewMode('navigation');
-    toast({
-      title: "Navigation started",
-      description: "Follow the step-by-step directions",
-    });
+    if (navigationSession) {
+      setViewMode('navigation');
+      toast({
+        title: "Navigation started",
+        description: "Follow the step-by-step directions. Scan QR codes at each checkpoint to proceed.",
+      });
+    }
   };
 
   const handleNextStep = () => {
@@ -205,12 +229,66 @@ const Index = () => {
     });
   };
 
+  const handleCheckpointValidation = (qrId: string) => {
+    if (!navigationSession) return null;
+    
+    const result = validateCheckpoint(qrId);
+    
+    if (result.success) {
+      if (result.isDestination) {
+        toast({
+          title: "Destination Reached! 🎉",
+          description: "Congratulations! You have successfully reached your destination.",
+        });
+      } else {
+        toast({
+          title: "Checkpoint Validated",
+          description: result.message,
+        });
+      }
+    } else {
+      toast({
+        title: "Invalid Checkpoint",
+        description: result.message,
+        variant: "destructive",
+      });
+    }
+    
+    return result;
+  };
+
   const handleBackToDirectory = () => {
     setViewMode('directory');
     setSelectedDestination(null);
     setRoute(null);
     setCurrentStep(0);
   };
+
+  const handleSessionComplete = () => {
+    completeSession();
+    setViewMode('directory');
+    setSelectedDestination(null);
+    setRoute(null);
+    setCurrentStep(0);
+    
+    toast({
+      title: "Navigation Completed",
+      description: "Great job! Your navigation session has been completed successfully.",
+    });
+  };
+
+  const handleSessionCancel = () => {
+    cancelSession();
+    setViewMode('directory');
+    setSelectedDestination(null);
+    setRoute(null);
+    setCurrentStep(0);
+    
+    toast({
+      title: "Navigation Cancelled",
+      description: "Your navigation session has been cancelled.",
+    });
+  }
 
   const handleQuickAction = (action: string) => {
     switch (action) {
@@ -378,16 +456,27 @@ const Index = () => {
         )}
 
         {viewMode === 'navigation' && route && (
-          <RouteDisplay
-            route={route}
-            currentStep={currentStep}
-            onStartNavigation={() => {}}
-            onRecalculate={handleRecalculateRoute}
-            onBack={handleBackToDirectory}
-            onNextStep={handleNextStep}
-            onPreviousStep={handlePreviousStep}
-            isNavigating={true}
-          />
+          <>
+            {navigationSession && isNavigating ? (
+              <CheckpointValidation
+                session={navigationSession}
+                onValidateCheckpoint={handleCheckpointValidation}
+                onCompleteSession={handleSessionComplete}
+                onCancelSession={handleSessionCancel}
+              />
+            ) : (
+              <RouteDisplay
+                route={route}
+                currentStep={currentStep}
+                onStartNavigation={() => {}}
+                onRecalculate={handleRecalculateRoute}
+                onBack={handleBackToDirectory}
+                onNextStep={handleNextStep}
+                onPreviousStep={handlePreviousStep}
+                isNavigating={true}
+              />
+            )}
+          </>
         )}
       </main>
 
@@ -404,24 +493,52 @@ const Index = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <QrCode className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Demo QR:</span>
+              <span className="text-sm text-muted-foreground">
+                {isNavigating ? 'Checkpoint QR:' : 'Demo QR:'}
+              </span>
             </div>
-            <Select 
-              value={qrSimulator} 
-              onValueChange={handleQRLocation}
-              disabled={qrLoading}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {demoLocations.map(loc => (
-                  <SelectItem key={loc.id} value={loc.id}>
-                    {loc.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {isNavigating && navigationSession ? (
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-muted-foreground">
+                  Current: {navigationSession.steps[navigationSession.currentStep - 1]?.checkpoint_qr}
+                </span>
+                <Select 
+                  value={qrSimulator} 
+                  onValueChange={(qrId) => {
+                    handleCheckpointValidation(qrId);
+                    setQrSimulator(qrId);
+                  }}
+                >
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Select checkpoint to simulate" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {navigationSession.steps.map((step, index) => (
+                      <SelectItem key={step.checkpoint_qr} value={step.checkpoint_qr}>
+                        Step {index + 1}: {step.landmark}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <Select 
+                value={qrSimulator} 
+                onValueChange={handleQRLocation}
+                disabled={qrLoading}
+              >
+                <SelectTrigger className="w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {demoLocations.map(loc => (
+                    <SelectItem key={loc.id} value={loc.id}>
+                      {loc.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             
             {/* Loading indicator in footer */}
             {qrLoading && (
