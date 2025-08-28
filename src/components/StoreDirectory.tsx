@@ -1,11 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, MapPin, Clock, Phone, Navigation } from 'lucide-react';
-import { Store, MALL_STORES, STORE_CATEGORIES, getStoresByCategory, searchStores } from '@/lib/mallData';
+import { Search, MapPin, Clock, Phone, Navigation, Loader2, AlertCircle } from 'lucide-react';
+import { useStores, useStoreCategories } from '@/hooks/use-api';
+import { Store } from '@/lib/api';
 
 interface StoreDirectoryProps {
   onNavigateToStore: (store: Store) => void;
@@ -13,14 +14,41 @@ interface StoreDirectoryProps {
 
 export const StoreDirectory: React.FC<StoreDirectoryProps> = ({ onNavigateToStore }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
 
+  // Debounce search query to prevent rapid API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 500); // Wait 500ms after user stops typing
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Fetch stores and categories from API
+  const { data: stores, loading: storesLoading, error: storesError, refetch: refetchStores } = useStores({
+    floor: undefined, // Will be filtered by category
+    category: selectedCategory === 'All' ? undefined : selectedCategory,
+    search: debouncedSearchQuery.trim() || undefined,
+  });
+
+  const { data: categories, loading: categoriesLoading, error: categoriesError } = useStoreCategories();
+
+  // Filter stores based on search query
   const filteredStores = useMemo(() => {
+    if (!stores) return [];
+    
     if (searchQuery.trim()) {
-      return searchStores(searchQuery);
+      return stores.filter(store =>
+        store.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        store.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        store.description.toLowerCase().includes(searchQuery.toLowerCase())
+      );
     }
-    return getStoresByCategory(selectedCategory);
-  }, [searchQuery, selectedCategory]);
+    
+    return stores;
+  }, [stores, searchQuery]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
@@ -28,6 +56,75 @@ export const StoreDirectory: React.FC<StoreDirectoryProps> = ({ onNavigateToStor
       setSelectedCategory('All');
     }
   };
+
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category);
+    setSearchQuery(''); // Clear search when changing category
+  };
+
+  const handleRetry = () => {
+    refetchStores();
+  };
+
+  // Loading state
+  if (storesLoading || categoriesLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-foreground">Where would you like to go?</h3>
+          
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+            <Input
+              placeholder="Search stores, restaurants, or services..."
+              disabled
+              className="pl-10 text-base py-6"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center space-y-3">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" />
+            <p className="text-muted-foreground">Loading stores...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (storesError || categoriesError) {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-foreground">Where would you like to go?</h3>
+          
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+            <Input
+              placeholder="Search stores, restaurants, or services..."
+              disabled
+              className="pl-10 text-base py-6"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center space-y-3">
+            <AlertCircle className="w-8 h-8 mx-auto text-destructive" />
+            <p className="text-destructive font-medium">Failed to load stores</p>
+            <p className="text-muted-foreground text-sm">
+              {storesError || categoriesError}
+            </p>
+            <Button onClick={handleRetry} variant="outline" size="sm">
+              Try Again
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -47,9 +144,9 @@ export const StoreDirectory: React.FC<StoreDirectoryProps> = ({ onNavigateToStor
       </div>
 
       {/* Category Tabs */}
-      <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="w-full">
+      <Tabs value={selectedCategory} onValueChange={handleCategoryChange} className="w-full">
         <TabsList className="w-full flex-wrap h-auto p-1 bg-muted/30">
-          {STORE_CATEGORIES.map((category) => (
+          {categories && Array.isArray(categories) && categories.map((category) => (
             <TabsTrigger
               key={category}
               value={category}
@@ -66,7 +163,7 @@ export const StoreDirectory: React.FC<StoreDirectoryProps> = ({ onNavigateToStor
             {filteredStores.length > 0 ? (
               filteredStores.map((store) => (
                 <StoreCard
-                  key={store.id}
+                  key={store.store_id}
                   store={store}
                   onNavigate={() => onNavigateToStore(store)}
                 />
@@ -116,7 +213,7 @@ const StoreCard: React.FC<{ store: Store; onNavigate: () => void }> = ({ store, 
         <div className="space-y-2">
           <div className="flex items-center text-sm text-muted-foreground">
             <Clock className="w-4 h-4 mr-2" />
-            <span>{store.hours}</span>
+            <span>{store.operating_hours.monday} - {store.operating_hours.friday}</span>
           </div>
           
           <div className="flex items-center text-sm text-muted-foreground">
@@ -124,10 +221,10 @@ const StoreCard: React.FC<{ store: Store; onNavigate: () => void }> = ({ store, 
             <span>Floor {store.floor} • Section {store.location.x}-{store.location.y}</span>
           </div>
           
-          {store.phone && (
+          {store.contact && (
             <div className="flex items-center text-sm text-muted-foreground">
               <Phone className="w-4 h-4 mr-2" />
-              <span>{store.phone}</span>
+              <span>{store.contact}</span>
             </div>
           )}
         </div>

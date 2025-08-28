@@ -15,6 +15,7 @@ import { RouteDisplay } from '@/components/RouteDisplay';
 import { QuickActions } from '@/components/QuickActions';
 import { FloorPlan } from '@/components/FloorPlan';
 import { EmergencyOverlay } from '@/components/EmergencyOverlay';
+import { ApiStatus } from '@/components/ApiStatus';
 
 // Data and utilities
 import { 
@@ -266,6 +267,9 @@ const Index = () => {
       <main className="container mx-auto px-4 py-6 space-y-6 pb-20">
         {/* Current Location - Always visible */}
         <CurrentLocation location={currentLocation} />
+
+        {/* API Status - For testing backend connectivity */}
+        <ApiStatus />
 
         {/* Content based on view mode */}
         {viewMode === 'directory' && (

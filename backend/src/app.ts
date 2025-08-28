@@ -22,20 +22,22 @@ app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? ['https://your-frontend-domain.com'] 
-    : ['http://localhost:3000', 'http://localhost:5173'],
+    : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080'],
   credentials: true
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'), // limit each IP to 100 requests per windowMs
-  message: {
-    success: false,
-    error: 'Too many requests from this IP, please try again later.'
-  }
-});
-app.use('/api/', limiter);
+// Rate limiting - Disabled for development to prevent issues
+if (process.env.NODE_ENV === 'production') {
+  const limiter = rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'), // limit each IP to 100 requests per windowMs
+    message: {
+      success: false,
+      error: 'Too many requests from this IP, please try again later.'
+    }
+  });
+  app.use('/api/', limiter);
+}
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
