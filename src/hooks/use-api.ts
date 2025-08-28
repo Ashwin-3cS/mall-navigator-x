@@ -139,6 +139,27 @@ export function useQRValidation() {
   return { ...state, validateQR };
 }
 
+// Hook for route calculation
+export function useRouteCalculation() {
+  const { state, setLoading, setError, setData } = useApiState<RouteResponse>();
+
+  const calculateRoute = useCallback(async (startLocation: string, destination: string, options: { accessibility_needed?: boolean } = {}) => {
+    setLoading(true);
+    try {
+      const response = await apiService.calculateRoute(startLocation, destination, options);
+      if (response.success && response.data) {
+        setData(response.data);
+      } else {
+        setError(response.error || 'Failed to calculate route');
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unknown error occurred');
+    }
+  }, [setLoading, setError, setData]);
+
+  return { ...state, calculateRoute };
+}
+
 // Hook for backend availability
 export function useBackendAvailability() {
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);

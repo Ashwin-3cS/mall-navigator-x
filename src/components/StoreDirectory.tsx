@@ -10,9 +10,10 @@ import { Store } from '@/lib/api';
 
 interface StoreDirectoryProps {
   onNavigateToStore: (store: Store) => void;
+  routeLoading?: boolean;
 }
 
-export const StoreDirectory: React.FC<StoreDirectoryProps> = ({ onNavigateToStore }) => {
+export const StoreDirectory: React.FC<StoreDirectoryProps> = ({ onNavigateToStore, routeLoading }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -166,6 +167,7 @@ export const StoreDirectory: React.FC<StoreDirectoryProps> = ({ onNavigateToStor
                   key={store.store_id}
                   store={store}
                   onNavigate={() => onNavigateToStore(store)}
+                  routeLoading={routeLoading}
                 />
               ))
             ) : (
@@ -182,7 +184,7 @@ export const StoreDirectory: React.FC<StoreDirectoryProps> = ({ onNavigateToStor
   );
 };
 
-const StoreCard: React.FC<{ store: Store; onNavigate: () => void }> = ({ store, onNavigate }) => {
+const StoreCard: React.FC<{ store: Store; onNavigate: () => void; routeLoading?: boolean }> = ({ store, onNavigate, routeLoading }) => {
   return (
     <Card className="store-card hover:border-primary/30 cursor-pointer group">
       <CardHeader className="pb-3">
@@ -231,10 +233,20 @@ const StoreCard: React.FC<{ store: Store; onNavigate: () => void }> = ({ store, 
 
         <Button 
           onClick={onNavigate}
+          disabled={routeLoading}
           className="w-full bg-gradient-to-r from-primary to-primary-glow hover:from-primary/90 hover:to-primary-glow/90 text-white font-medium"
         >
-          <Navigation className="w-4 h-4 mr-2" />
-          Navigate Here
+          {routeLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Calculating Route...
+            </>
+          ) : (
+            <>
+              <Navigation className="w-4 h-4 mr-2" />
+              Navigate Here
+            </>
+          )}
         </Button>
       </CardContent>
     </Card>

@@ -173,10 +173,21 @@ class ApiService {
 
   // Location Management
   async validateQR(qrId: string): Promise<ApiResponse<Location>> {
-    return this.request<Location>('/api/locations/validate', {
+    const response = await this.request<{ location: Location }>('/api/locations/validate', {
       method: 'POST',
       body: JSON.stringify({ qr_id: qrId }),
     });
+    
+    // Transform the response to match expected structure
+    if (response.success && response.data) {
+      return {
+        success: response.success,
+        data: response.data.location,
+        error: response.error
+      };
+    }
+    
+    return response as ApiResponse<Location>;
   }
 
   async getLocations(filters: LocationFilters = {}): Promise<ApiResponse<LocationResponse>> {
@@ -198,7 +209,7 @@ class ApiService {
 
   // Navigation
   async calculateRoute(startLocation: string, destination: string, options: { accessibility_needed?: boolean } = {}): Promise<ApiResponse<RouteResponse>> {
-    return this.request<RouteResponse>('/api/navigation/calculate', {
+    const response = await this.request<{ route: RouteResponse }>('/api/navigation/calculate', {
       method: 'POST',
       body: JSON.stringify({
         start_location: startLocation,
@@ -206,6 +217,17 @@ class ApiService {
         ...options,
       }),
     });
+    
+    // Transform the response to match expected structure
+    if (response.success && response.data) {
+      return {
+        success: response.success,
+        data: response.data.route,
+        error: response.error
+      };
+    }
+    
+    return response as ApiResponse<RouteResponse>;
   }
 
   async getNearestExit(location: string): Promise<ApiResponse<EmergencyExitResponse>> {

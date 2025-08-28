@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { QrCode, Wifi, WifiOff, Globe } from 'lucide-react';
+import { QrCode, Wifi, WifiOff, Globe, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import mallnavLogo from '@/assets/mallnav-logo.jpg';
 
@@ -19,13 +19,13 @@ import { ApiStatus } from '@/components/ApiStatus';
 
 // Data and utilities
 import { 
-  parseQRLocation, 
   findRoute, 
-  Store, 
-  Location, 
   Route,
   MALL_LOCATIONS 
 } from '@/lib/mallData';
+
+// API Hooks and Types
+import { useQRValidation, useRouteCalculation, Location, Store } from '@/hooks/use-api';
 
 type ViewMode = 'directory' | 'route' | 'navigation';
 
@@ -40,6 +40,12 @@ const Index = () => {
   const [currentFloor, setCurrentFloor] = useState(1);
   const [showEmergencyOverlay, setShowEmergencyOverlay] = useState(false);
   const { toast } = useToast();
+  
+  // QR Validation API hook
+  const { validateQR, loading: qrLoading, error: qrError, data: qrLocation } = useQRValidation();
+  
+  // Route Calculation API hook
+  const { calculateRoute, loading: routeLoading, error: routeError, data: calculatedRoute } = useRouteCalculation();
 
   // Demo QR locations for testing
   const demoLocations = [
@@ -74,47 +80,95 @@ const Index = () => {
     };
   }, []);
 
-  const handleQRLocation = (locationId: string) => {
-    const location = parseQRLocation(locationId);
-    if (location) {
-      setCurrentLocation(location);
-      setQrSimulator(locationId);
+  // Handle QR validation response
+  useEffect(() => {
+    if (qrLocation) {
+      setCurrentLocation(qrLocation);
+      setQrSimulator(qrLocation.qr_id);
       toast({
         title: "Location detected",
-        description: `You are at ${location.name}`,
+        description: `You are at ${qrLocation.name}`,
       });
-    } else {
+    }
+  }, [qrLocation, toast]);
+
+  // Handle QR validation errors
+  useEffect(() => {
+    if (qrError) {
       toast({
         title: "Invalid QR Code",
-        description: "Please scan a valid QR code",
+        description: qrError,
+        variant: "destructive",
+      });
+    }
+  }, [qrError, toast]);
+
+  // Handle route calculation response
+  useEffect(() => {
+    if (calculatedRoute) {
+      // Transform API route to match frontend Route interface
+      const transformedRoute: Route = {
+        startId: currentLocation?.qr_id || '',
+        endId: selectedDestination?.store_id || '',
+        steps: calculatedRoute.steps.map((step, index) => ({
+          instruction: step.instruction,
+          direction: step.direction as any,
+          distance: `${step.distance}m`,
+          landmark: step.landmark,
+          checkpoint: step.checkpoint_qr === calculatedRoute.steps[index + 1]?.checkpoint_qr,
+          arrival: index === calculatedRoute.steps.length - 1
+        })),
+        totalDistance: calculatedRoute.total_distance,
+        estimatedTime: calculatedRoute.estimated_time
+      };
+      
+      setRoute(transformedRoute);
+      setViewMode('route');
+      setCurrentStep(0);
+      
+      toast({
+        title: "Route Calculated",
+        description: `Route to ${selectedDestination?.name} is ready`,
+      });
+    }
+  }, [calculatedRoute, currentLocation, selectedDestination, toast]);
+
+  // Handle route calculation errors
+  useEffect(() => {
+    if (routeError) {
+      toast({
+        title: "Route Calculation Failed",
+        description: routeError,
+        variant: "destructive",
+      });
+    }
+  }, [routeError, toast]);
+
+  const handleQRLocation = async (locationId: string) => {
+    try {
+      await validateQR(locationId);
+    } catch (error) {
+      toast({
+        title: "QR Validation Error",
+        description: "Failed to validate QR code",
         variant: "destructive",
       });
     }
   };
 
-  const handleNavigateToStore = (store: Store) => {
+  const handleNavigateToStore = async (store: Store) => {
     if (!currentLocation) return;
     
-    const storeLocation = MALL_LOCATIONS[store.id];
-    if (!storeLocation) {
+    // Set selected destination first
+    setSelectedDestination(store);
+    
+    try {
+      // Calculate route using backend API
+      await calculateRoute(currentLocation.qr_id, store.store_id);
+    } catch (error) {
       toast({
-        title: "Route not available",
-        description: "Unable to calculate route to this destination",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const calculatedRoute = findRoute(currentLocation.id, store.id);
-    if (calculatedRoute) {
-      setSelectedDestination(store);
-      setRoute(calculatedRoute);
-      setViewMode('route');
-      setCurrentStep(0);
-    } else {
-      toast({
-        title: "Route not available", 
-        description: "No route found to this destination",
+        title: "Route Calculation Error",
+        description: "Failed to calculate route to this destination",
         variant: "destructive",
       });
     }
@@ -169,7 +223,7 @@ const Index = () => {
           loc => loc.name.toLowerCase().includes('restroom')
         );
         if (restroom && currentLocation) {
-          const restroomRoute = findRoute(currentLocation.id, restroom.id);
+          const restroomRoute = findRoute(currentLocation.qr_id, restroom.id);
           if (restroomRoute) {
             setRoute(restroomRoute);
             setViewMode('route');
@@ -195,9 +249,14 @@ const Index = () => {
           <CardContent className="pt-6 text-center space-y-4">
             <QrCode className="w-16 h-16 mx-auto text-muted-foreground" />
             <div>
-              <h2 className="text-xl font-semibold mb-2">Scan QR Code</h2>
+              <h2 className="text-xl font-semibold mb-2">
+                {qrLoading ? 'Validating QR Code...' : 'Scan QR Code'}
+              </h2>
               <p className="text-muted-foreground">
-                Please scan a QR code to start navigation
+                {qrLoading 
+                  ? 'Please wait while we validate your location...' 
+                  : 'Please scan a QR code to start navigation'
+                }
               </p>
             </div>
             
@@ -205,7 +264,11 @@ const Index = () => {
             <div className="space-y-3">
               <Separator />
               <p className="text-sm text-muted-foreground">Demo Mode</p>
-              <Select value={qrSimulator} onValueChange={handleQRLocation}>
+              <Select 
+                value={qrSimulator} 
+                onValueChange={handleQRLocation}
+                disabled={qrLoading}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a location to simulate" />
                 </SelectTrigger>
@@ -217,6 +280,14 @@ const Index = () => {
                   ))}
                 </SelectContent>
               </Select>
+              
+              {/* Loading indicator */}
+              {qrLoading && (
+                <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                  <span>Validating location...</span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -274,10 +345,13 @@ const Index = () => {
         {/* Content based on view mode */}
         {viewMode === 'directory' && (
           <>
-            <StoreDirectory onNavigateToStore={handleNavigateToStore} />
+            <StoreDirectory 
+              onNavigateToStore={handleNavigateToStore} 
+              routeLoading={routeLoading}
+            />
             <FloorPlan
               currentLocation={currentLocation}
-              destination={selectedDestination ? MALL_LOCATIONS[selectedDestination.id] : undefined}
+              destination={selectedDestination ? MALL_LOCATIONS[selectedDestination.store_id] : undefined}
               floor={currentFloor}
               onFloorChange={setCurrentFloor}
             />
@@ -332,7 +406,11 @@ const Index = () => {
               <QrCode className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Demo QR:</span>
             </div>
-            <Select value={qrSimulator} onValueChange={handleQRLocation}>
+            <Select 
+              value={qrSimulator} 
+              onValueChange={handleQRLocation}
+              disabled={qrLoading}
+            >
               <SelectTrigger className="w-48">
                 <SelectValue />
               </SelectTrigger>
@@ -344,6 +422,14 @@ const Index = () => {
                 ))}
               </SelectContent>
             </Select>
+            
+            {/* Loading indicator in footer */}
+            {qrLoading && (
+              <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                <span>Validating...</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
